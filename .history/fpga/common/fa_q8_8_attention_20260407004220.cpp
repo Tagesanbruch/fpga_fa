@@ -305,7 +305,6 @@ void run_attention_tiled_hls(const int16_t *q,
 #pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=8 dim=2
 
   for (int q_start = 0; q_start < seq_len; q_start += kTileQ) {
-#pragma HLS LOOP_TRIPCOUNT min=0 max=(kMaxSeqLen / kTileQ)
     const int valid_q = std::min(kTileQ, seq_len - q_start);
 
     load_q_tile(q, q_tile, q_start, stride_elems, valid_q);
@@ -320,7 +319,6 @@ void run_attention_tiled_hls(const int16_t *q,
     prof_load_kv_elems += static_cast<uint32_t>(2 * valid_k * kHeadDim);
 
     for (; k_start < seq_len; k_start += kTileK) {
-#pragma HLS LOOP_TRIPCOUNT min=0 max=(kMaxSeqLen / kTileK)
       valid_k = std::min(kTileK, seq_len - k_start);
       prof_kv_tile_iters += 1u;
       prof_valid_score_evals += static_cast<uint32_t>(valid_q * valid_k);

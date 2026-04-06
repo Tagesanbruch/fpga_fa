@@ -271,15 +271,15 @@ void run_attention_tiled_hls(const int16_t *q,
   int stride_elems = stride_bytes / static_cast<int>(sizeof(int16_t));
   if (stride_elems < kHeadDim) stride_elems = kHeadDim;
 
-  uint32_t prof_valid_score_evals = 0;
-  uint32_t prof_load_q_elems = 0;
-  uint32_t prof_load_kv_elems = 0;
-  uint32_t prof_store_o_elems = 0;
-  uint32_t prof_init_rows = 0;
-  uint32_t prof_normalize_rows = 0;
-  uint32_t prof_kv_tile_iters = 0;
-
   clear_profile(profile);
+  if (profile) {
+    profile[kProfileSeqLen] = static_cast<uint32_t>(seq_len);
+    profile[kProfileQTiles] = static_cast<uint32_t>((seq_len + kTileQ - 1) / kTileQ);
+    profile[kProfileKTiles] = static_cast<uint32_t>((seq_len + kTileK - 1) / kTileK);
+    profile[kProfileStrideBytes] = static_cast<uint32_t>(stride_bytes);
+    profile[kProfileScaleQ8_8] = static_cast<uint16_t>(scale_q8_8);
+    profile[kProfileCausal] = causal ? 1u : 0u;
+  }
 
   int16_t q_tile[kTileQ][kHeadDim];
   int16_t k_tile_ping[kTileK][kHeadDim];
@@ -305,25 +305,29 @@ void run_attention_tiled_hls(const int16_t *q,
 #pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=8 dim=2
 
   for (int q_start = 0; q_start < seq_len; q_start += kTileQ) {
-#pragma HLS LOOP_TRIPCOUNT min=0 max=(kMaxSeqLen / kTileQ)
     const int valid_q = std::min(kTileQ, seq_len - q_start);
 
     load_q_tile(q, q_tile, q_start, stride_elems, valid_q);
     init_row_context(row_m, row_l, row_acc, valid_q, neg_large_q8_8);
-    prof_init_rows += static_cast<uint32_t>(valid_q);
-    prof_load_q_elems += static_cast<uint32_t>(valid_q * kHeadDim);
+    if (profile) {
+      profile[kProfileInitRows] += static_cast<uint32_t>(valid_q);
+      profile[kProfileLoadQElems] += static_cast<uint32_t>(valid_q * kHeadDim);
+    }
 
     bool active_ping = true;
     int k_start = 0;
     int valid_k = std::min(kTileK, seq_len - k_start);
     load_kv_tile(k, v, k_tile_ping, v_tile_ping, k_start, stride_elems, valid_k);
-    prof_load_kv_elems += static_cast<uint32_t>(2 * valid_k * kHeadDim);
+    if (profile) {
+      profile[kProfileLoadKVElems] += static_cast<uint32_t>(2 * valid_k * kHeadDim);
+    }
 
     for (; k_start < seq_len; k_start += kTileK) {
-#pragma HLS LOOP_TRIPCOUNT min=0 max=(kMaxSeqLen / kTileK)
       valid_k = std::min(kTileK, seq_len - k_start);
-      prof_kv_tile_iters += 1u;
-      prof_valid_score_evals += static_cast<uint32_t>(valid_q * valid_k);
+      if (profile) {
+        profile[kProfileKVTileIters] += 1u;
+        profile[kProfileValidScoreEvals] += static_cast<uint32_t>(valid_q * valid_k);
+      }
 
       if (active_ping) {
         compute_kv_tile(q_tile, k_tile_ping, v_tile_ping, row_m, row_l, row_acc, q_start, k_start, valid_q, valid_k,
@@ -341,31 +345,22 @@ void run_attention_tiled_hls(const int16_t *q,
         } else {
           load_kv_tile(k, v, k_tile_ping, v_tile_ping, next_k_start, stride_elems, next_valid_k);
         }
-        prof_load_kv_elems += static_cast<uint32_t>(2 * next_valid_k * kHeadDim);
+        if (profile) {
+          profile[kProfileLoadKVElems] += static_cast<uint32_t>(2 * next_valid_k * kHeadDim);
+        }
         active_ping = !active_ping;
       }
     }
 
     normalize_tile(row_m, row_l, row_acc, o_tile, valid_q);
     store_o_tile(o_tile, o, q_start, stride_elems, valid_q);
-    prof_normalize_rows += static_cast<uint32_t>(valid_q);
-    prof_store_o_elems += static_cast<uint32_t>(valid_q * kHeadDim);
+    if (profile) {
+      profile[kProfileNormalizeRows] += static_cast<uint32_t>(valid_q);
+      profile[kProfileStoreOElems] += static_cast<uint32_t>(valid_q * kHeadDim);
+    }
   }
 
   if (profile) {
-    profile[kProfileSeqLen] = static_cast<uint32_t>(seq_len);
-    profile[kProfileQTiles] = static_cast<uint32_t>((seq_len + kTileQ - 1) / kTileQ);
-    profile[kProfileKTiles] = static_cast<uint32_t>((seq_len + kTileK - 1) / kTileK);
-    profile[kProfileStrideBytes] = static_cast<uint32_t>(stride_bytes);
-    profile[kProfileScaleQ8_8] = static_cast<uint16_t>(scale_q8_8);
-    profile[kProfileCausal] = causal ? 1u : 0u;
-    profile[kProfileValidScoreEvals] = prof_valid_score_evals;
-    profile[kProfileLoadQElems] = prof_load_q_elems;
-    profile[kProfileLoadKVElems] = prof_load_kv_elems;
-    profile[kProfileStoreOElems] = prof_store_o_elems;
-    profile[kProfileInitRows] = prof_init_rows;
-    profile[kProfileNormalizeRows] = prof_normalize_rows;
-    profile[kProfileKVTileIters] = prof_kv_tile_iters;
     profile[kProfileScoreEvals] = static_cast<uint32_t>(seq_len * seq_len);
     profile[kProfileNormRows] = static_cast<uint32_t>(seq_len);
   }
