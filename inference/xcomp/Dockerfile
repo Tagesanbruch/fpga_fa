@@ -13,8 +13,11 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     git \
+    ninja-build \
     python3 \
     python3-pip \
+    pkg-config \
+    uuid-dev \
     wget \
     && rm -rf /var/lib/apt/lists/*
 

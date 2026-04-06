@@ -1,4 +1,4 @@
-.PHONY: setup-py test regress list clean lint compare-torch audit-algo sta-list sta-syn sta-run sta sta-module sta-check-paths cpp-sdpa-build cpp-sdpa-compare check-sdpa-cpp verilator-cpp-build verilator-cpp-run check-sdpa-verilator-cpp cmodel-sweep cmodel-mask-sweep rtl-latency-profile cmodel-compute-adv rtl-cmodel-compare fpga-kernel-csim
+.PHONY: setup-py test regress list clean lint compare-torch audit-algo sta-list sta-syn sta-run sta sta-module sta-check-paths cpp-sdpa-build cpp-sdpa-compare check-sdpa-cpp verilator-cpp-build verilator-cpp-run check-sdpa-verilator-cpp cmodel-sweep cmodel-mask-sweep rtl-latency-profile cmodel-compute-adv rtl-cmodel-compare fpga-kernel-csim fpga-kernel-xo fpga-gemv-csim fpga-gemv-xo
 
 include cfg/sta_modules.mk
 
@@ -11,6 +11,12 @@ RTL_DUMP_DIR ?= /tmp/fa_rtl_dump
 VERILATOR_CPP_DIR ?= build/verilator_cpp
 VERILATOR_CPP_BIN ?= fa_attention_core_tb
 VERILATOR_CPP_ARGS ?=
+VERILATOR_LOCAL_BIN := $(PWD)/third_party/verilator/bin/verilator
+VERILATOR_BIN ?= $(if $(wildcard $(VERILATOR_LOCAL_BIN)),$(VERILATOR_LOCAL_BIN),verilator)
+VERILATOR_BIN_DIR := $(dir $(VERILATOR_BIN))
+VERILATOR_MAKE_JOBS ?= 96
+OBJCACHE ?=
+SIM_ENV := VIRTUAL_ENV=$(PWD)/.venv PATH=$(PWD)/.venv/bin:$(VERILATOR_BIN_DIR):$$PATH MAKEFLAGS=-j$(VERILATOR_MAKE_JOBS) OBJCACHE=$(OBJCACHE)
 
 YOSYS_STA_DIR ?= ../ysyx/yosys-sta
 PDK_SRC_DIR ?= ../ysyx/mac/pdk/icsprout55-pdk
@@ -37,39 +43,45 @@ setup-py:
 	uv pip install --python .venv/bin/python 'cocotb==1.9.2' pytest numpy
 
 test:
-	VIRTUAL_ENV=$(PWD)/.venv PATH=$(PWD)/.venv/bin:$$PATH $(MAKE) -C dv/cocotb MODULE=$(MODULE) WAVES=$(WAVES) WAVE_FMT=$(WAVE_FMT) test
+	$(SIM_ENV) $(MAKE) -C dv/cocotb MODULE=$(MODULE) WAVES=$(WAVES) WAVE_FMT=$(WAVE_FMT) test
 
 regress:
-	VIRTUAL_ENV=$(PWD)/.venv PATH=$(PWD)/.venv/bin:$$PATH $(MAKE) -C dv/cocotb WAVES=$(WAVES) WAVE_FMT=$(WAVE_FMT) regress
+	$(SIM_ENV) $(MAKE) -C dv/cocotb WAVES=$(WAVES) WAVE_FMT=$(WAVE_FMT) regress
 
 list:
-	VIRTUAL_ENV=$(PWD)/.venv PATH=$(PWD)/.venv/bin:$$PATH $(MAKE) -C dv/cocotb list
+	$(SIM_ENV) $(MAKE) -C dv/cocotb list
 
 lint:
-	verilator $(LINT_FLAGS) --top-module fa_mul_sat_q8_8 \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_mul_sat_q8_8 \
 		rtl/common/fa_mul_sat_q8_8.sv
-	verilator $(LINT_FLAGS) --top-module fa_exp_pwl_8seg_q1_15 \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_exp_pwl_8seg_q1_15 \
 		rtl/softmax/fa_exp_pwl_8seg_q1_15.sv
-	verilator $(LINT_FLAGS) --top-module fa_recip_nr_q16_16 \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_recip_nr_q16_16 \
 		rtl/softmax/fa_recip_nr_q16_16.sv
-	verilator $(LINT_FLAGS) --top-module fa_axi_lite_regs \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_axi_lite_regs \
 		rtl/bus/fa_axi_lite_regs.sv
-	verilator $(LINT_FLAGS) --top-module fa_dma_reader \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_dma_reader \
 		rtl/bus/fa_dma_reader.sv
-	verilator $(LINT_FLAGS) --top-module fa_dma_writer \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_dma_writer \
 		rtl/bus/fa_dma_writer.sv
-	verilator $(LINT_FLAGS) --top-module fa_attention_core \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_attention_core \
 		rtl/common/fa_mul_sat_q8_8.sv \
 		rtl/softmax/fa_exp_pwl_8seg_q1_15.sv \
 		rtl/softmax/fa_recip_nr_q16_16.sv \
+		rtl/core/fa_qk_dotprod_slice.sv \
+		rtl/core/fa_online_softmax_ctx.sv \
+		rtl/core/fa_o_normalize_block.sv \
 		rtl/core/fa_attention_core.sv
-	verilator $(LINT_FLAGS) --top-module fa_attention_ip_top \
+	$(VERILATOR_BIN) $(LINT_FLAGS) --top-module fa_attention_ip_top \
 		rtl/common/fa_mul_sat_q8_8.sv \
 		rtl/softmax/fa_exp_pwl_8seg_q1_15.sv \
 		rtl/softmax/fa_recip_nr_q16_16.sv \
 		rtl/bus/fa_axi_lite_regs.sv \
 		rtl/bus/fa_dma_reader.sv \
 		rtl/bus/fa_dma_writer.sv \
+		rtl/core/fa_qk_dotprod_slice.sv \
+		rtl/core/fa_online_softmax_ctx.sv \
+		rtl/core/fa_o_normalize_block.sv \
 		rtl/core/fa_attention_core.sv \
 		rtl/top/fa_attention_ip_top.sv
 
@@ -137,16 +149,18 @@ cpp-sdpa-compare: cpp-sdpa-build
 	$(CPP_SDPA_BIN) $(RTL_DUMP_DIR)
 
 check-sdpa-cpp:
-	@echo "[INFO] Using Verilator: $$(verilator --version)"
+	@echo "[INFO] Using Verilator: $$($(VERILATOR_BIN) --version)"
 	@echo "[INFO] Running full-parameter RTL simulation (fa_attention_core_full) and dumping vectors to $(RTL_DUMP_DIR)"
 	rm -rf $(RTL_DUMP_DIR)
-	VIRTUAL_ENV=$(PWD)/.venv PATH=$(PWD)/.venv/bin:$$PATH RTL_DUMP_DIR=$(RTL_DUMP_DIR) $(MAKE) -C dv/cocotb MODULE=fa_attention_core_full test
+	$(SIM_ENV) RTL_DUMP_DIR=$(RTL_DUMP_DIR) $(MAKE) -C dv/cocotb MODULE=fa_attention_core_full test
 	@echo "[INFO] Running independent C++ SDPA comparator"
 	$(MAKE) cpp-sdpa-compare RTL_DUMP_DIR=$(RTL_DUMP_DIR)
 
 verilator-cpp-build:
 	@mkdir -p $(VERILATOR_CPP_DIR)
-	verilator -cc --exe --build \
+	$(VERILATOR_BIN) -cc --exe --build \
+		-j $(VERILATOR_MAKE_JOBS) \
+		-MAKEFLAGS "-j$(VERILATOR_MAKE_JOBS) OBJCACHE=$(OBJCACHE)" \
 		--Mdir $(VERILATOR_CPP_DIR) \
 		--top-module fa_attention_core \
 		-O3 -CFLAGS "-O3 -std=c++17" \
@@ -165,7 +179,7 @@ verilator-cpp-run: verilator-cpp-build
 	$(VERILATOR_CPP_DIR)/$(VERILATOR_CPP_BIN) $(VERILATOR_CPP_ARGS)
 
 check-sdpa-verilator-cpp:
-	@echo "[INFO] Using Verilator: $$(verilator --version)"
+	@echo "[INFO] Using Verilator: $$($(VERILATOR_BIN) --version)"
 	@echo "[INFO] Running direct C++ Verilator testbench (no cocotb)"
 	$(MAKE) verilator-cpp-run
 
@@ -215,3 +229,12 @@ rtl-cmodel-compare: rtl-latency-profile cmodel-compute-adv
 
 fpga-kernel-csim:
 	$(MAKE) -C fpga/hls/fa_attention_kernel csim
+
+fpga-kernel-xo:
+	$(MAKE) -C fpga/hls/fa_attention_kernel xo
+
+fpga-gemv-csim:
+	$(MAKE) -C fpga/hls/fa_gemv_kernel csim
+
+fpga-gemv-xo:
+	$(MAKE) -C fpga/hls/fa_gemv_kernel xo

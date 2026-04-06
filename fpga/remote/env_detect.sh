@@ -5,24 +5,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
 XILINX_ROOT_DEFAULT=${XILINX_ROOT_DEFAULT:-/home/luci/tools/Xilinx}
 XILINX_VERSION=${XILINX_VERSION:-2023.1}
-
-source_if_exists() {
-  local candidate="$1"
-  if [[ -f "$candidate" ]]; then
-    # shellcheck disable=SC1090
-    source "$candidate"
-    return 0
-  fi
-  return 1
-}
-
-if ! command -v v++ >/dev/null 2>&1; then
-  source_if_exists "$XILINX_ROOT_DEFAULT/Vitis/$XILINX_VERSION/settings64.sh" || true
-fi
-
-if ! command -v vitis_hls >/dev/null 2>&1; then
-  source_if_exists "$XILINX_ROOT_DEFAULT/Vitis_HLS/$XILINX_VERSION/settings64.sh" || true
-fi
+source "$SCRIPT_DIR/source_xilinx_env.sh" all
 
 find_kv260_platform() {
   local roots=(
@@ -30,6 +13,7 @@ find_kv260_platform() {
     "$ROOT_DIR/fpga/platforms"
     "$HOME/xilinx/platforms"
     "$HOME/platforms"
+    "$XILINX_ROOT_DEFAULT/Vitis/$XILINX_VERSION/base_platforms"
     "$XILINX_ROOT_DEFAULT/Downloads"
     "$XILINX_ROOT_DEFAULT/SharedData"
     "/opt/xilinx/platforms"
@@ -65,6 +49,8 @@ fi
 
 if [[ -z "${KV260_PLATFORM:-}" ]]; then
   echo "[ERR] KV260_PLATFORM is not set and no kv260 .xpfm could be found automatically" >&2
+  echo "[ERR] Installed base platforms on this machine:" >&2
+  find "$XILINX_ROOT_DEFAULT/Vitis/$XILINX_VERSION/base_platforms" -maxdepth 2 -type f -name '*.xpfm' 2>/dev/null | sed 's/^/[ERR]   /' >&2 || true
   return 1 2>/dev/null || exit 1
 fi
 

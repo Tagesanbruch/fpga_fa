@@ -32,8 +32,8 @@ void fa_attention_kernel(const int16_t *q,
 #pragma HLS INTERFACE s_axilite port = profile bundle = control
 #pragma HLS INTERFACE s_axilite port = return bundle = control
 
-  fpga::fa::run_attention_strict(q, k, v, o, seq_len, stride_bytes, scale_q8_8, neg_large_q8_8, causal_en != 0,
-                                 profile);
+  fpga::fa::run_attention_tiled_hls(q, k, v, o, seq_len, stride_bytes, scale_q8_8, neg_large_q8_8, causal_en != 0,
+                                    profile);
 }
 
 }  // extern "C"

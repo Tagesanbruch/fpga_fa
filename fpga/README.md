@@ -10,6 +10,13 @@ prebuilt platform. The working assumptions are:
 - all Xilinx toolchains live on the remote server, not on the local macOS host
 - if a local Python helper is needed later, it should use the repository-managed `uv` environment
 
+Current server status on `2026-04-06`:
+
+- `Vivado/Vitis/Vitis_HLS 2023.1` are installed under `/home/luci/tools/Xilinx`
+- the HLS `xo` flow can be driven locally from this repository
+- the installed Vitis base platforms include `zcu102/zcu104/vck190/vmk180/vek280`, but not `kv260`
+- XRT development headers/libraries were not found under `/usr`, `/opt`, or `/home/luci/tools/Xilinx`
+
 Directory layout:
 
 - `common/`: shared fixed-point helpers and the strict Q8.8 attention reference
@@ -22,6 +29,7 @@ Directory layout:
 Recommended first steps:
 
 1. `make fpga-kernel-csim`
-2. Set `KV260_PLATFORM=/abs/path/to/kv260.xpfm`
-3. Run `fpga/vitis/kv260/build_xclbin.sh`
-4. Copy the generated `xclbin` and build `fpga/host/xrt_runner`
+2. `make fpga-kernel-xo`
+3. Set `KV260_PLATFORM=/abs/path/to/kv260.xpfm`
+4. Run `fpga/vitis/kv260/build_xclbin.sh`
+5. Copy the generated `xclbin` and build `fpga/host/xrt_runner`

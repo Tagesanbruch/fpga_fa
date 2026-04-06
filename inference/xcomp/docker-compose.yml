@@ -6,9 +6,9 @@ services:
       dockerfile: Dockerfile
     platform: linux/arm64
     container_name: zynq-builder
-    working_dir: /workspace
+    working_dir: /workspace/fpga-fa
     volumes:
-      - ./llama.cpp:/workspace
+      - ../..:/workspace/fpga-fa
     command: ["sleep", "infinity"]
     tty: true
     stdin_open: true

@@ -1,16 +1,29 @@
-# Future llama.cpp Integration
+# llama.cpp Integration Runtime
 
-This directory is intentionally a placeholder.
+This directory now contains the queue-oriented runtime shared by:
 
-Planned direction:
+- the standalone FPGA/XRT runner path
+- the `ggml-fpga` backend inside `inference/xcomp/llama.cpp`
 
-- keep the XRT-native host/runtime as the only board-facing API
-- add a thin bridge that marshals single-head attention buffers into the XRT runner
-- integrate that bridge into a `llama.cpp` custom backend or a small adapter layer
-- avoid adopting llama.cpp's existing OpenCL backend, since it targets GPUs rather than Xilinx FPGA kernels
+Current scope:
 
-Suggested order:
+- queue host-side attention tasks and drain them through either:
+  - software HLS reference (`run_attention_tiled_hls`)
+  - strict Q8.8 reference (`run_attention_strict`)
+  - XRT (`fa_attention_kernel`) when compiled with XRT enabled
+- keep the board-facing ABI aligned with the HLS kernel:
+  - `seq_len == kv_len`
+  - `D = 64`
+  - `seq_len <= 256`
+  - dense Q8.8 buffers
 
-1. validate the standalone XRT runner on KV260
-2. wire the same runtime into `inference/native`
-3. add a `llama.cpp` proof-of-concept backend
+Current limitation:
+
+- this runtime only accelerates square single-block attention today
+- decode-style `q_len != kv_len`, arbitrary masks, sinks, and softcap still fall back to CPU in llama.cpp
+
+Relevant entrypoints:
+
+- `fa_task_queue_runtime.hpp`
+- `fa_task_queue_runtime.cpp`
+- `inference/xcomp/llama.cpp/ggml/src/ggml-fpga/ggml-fpga.cpp`
