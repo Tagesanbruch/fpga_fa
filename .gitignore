@@ -15,6 +15,12 @@ sim_build/
 build/
 syn/
 logs/
+fpga/build/
+fpga/artifacts/
+fpga/**/build/
+*.xo
+*.xclbin
+*.xsa
 *.vcd
 *.vvp
 *.fst

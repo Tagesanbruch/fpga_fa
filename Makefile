@@ -1,4 +1,4 @@
-.PHONY: setup-py test regress list clean lint compare-torch audit-algo sta-list sta-syn sta-run sta sta-module sta-check-paths cpp-sdpa-build cpp-sdpa-compare check-sdpa-cpp verilator-cpp-build verilator-cpp-run check-sdpa-verilator-cpp cmodel-sweep cmodel-mask-sweep rtl-latency-profile cmodel-compute-adv rtl-cmodel-compare
+.PHONY: setup-py test regress list clean lint compare-torch audit-algo sta-list sta-syn sta-run sta sta-module sta-check-paths cpp-sdpa-build cpp-sdpa-compare check-sdpa-cpp verilator-cpp-build verilator-cpp-run check-sdpa-verilator-cpp cmodel-sweep cmodel-mask-sweep rtl-latency-profile cmodel-compute-adv rtl-cmodel-compare fpga-kernel-csim
 
 include cfg/sta_modules.mk
 
@@ -212,3 +212,6 @@ rtl-cmodel-compare: rtl-latency-profile cmodel-compute-adv
 		--input docs/data/20260304_rtl_cmodel_compute_compare.csv \
 		--title "RTL vs CModel Compute Comparison" \
 		--output docs/report/20260304_rtl_cmodel_compute_compare.png
+
+fpga-kernel-csim:
+	$(MAKE) -C fpga/hls/fa_attention_kernel csim

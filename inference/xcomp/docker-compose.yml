@@ -1,0 +1,14 @@
+services:
+  zynq-builder:
+    image: zynq-builder:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/arm64
+    container_name: zynq-builder
+    working_dir: /workspace
+    volumes:
+      - ./llama.cpp:/workspace
+    command: ["sleep", "infinity"]
+    tty: true
+    stdin_open: true
