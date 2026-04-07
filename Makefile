@@ -1,4 +1,4 @@
-.PHONY: setup-py test regress list clean lint compare-torch audit-algo sta-list sta-syn sta-run sta sta-module sta-check-paths cpp-sdpa-build cpp-sdpa-compare check-sdpa-cpp verilator-cpp-build verilator-cpp-run check-sdpa-verilator-cpp cmodel-sweep cmodel-mask-sweep rtl-latency-profile cmodel-compute-adv rtl-cmodel-compare fpga-kernel-csim fpga-kernel-xo fpga-gemv-csim fpga-gemv-xo
+.PHONY: setup-py test regress list clean lint compare-torch audit-algo sta-list sta-syn sta-run sta sta-module sta-check-paths cpp-sdpa-build cpp-sdpa-compare check-sdpa-cpp verilator-cpp-build verilator-cpp-run check-sdpa-verilator-cpp cmodel-sweep cmodel-mask-sweep rtl-latency-profile cmodel-compute-adv rtl-cmodel-compare fpga-kernel-csim fpga-kernel-xo fpga-gemv-csim fpga-gemv-xo fpga-gemv-queue-csim fpga-gemv-queue-xo fpga-add-seq-csim fpga-add-seq-xo fpga-kv260-ref-bd fpga-kv260-ref-xsa fpga-kv260-prepare-common-image
 
 include cfg/sta_modules.mk
 
@@ -238,3 +238,24 @@ fpga-gemv-csim:
 
 fpga-gemv-xo:
 	$(MAKE) -C fpga/hls/fa_gemv_kernel xo
+
+fpga-gemv-queue-csim:
+	$(MAKE) -C fpga/hls/fa_gemv_queue_kernel csim
+
+fpga-gemv-queue-xo:
+	$(MAKE) -C fpga/hls/fa_gemv_queue_kernel xo
+
+fpga-add-seq-csim:
+	$(MAKE) -C fpga/hls/add_seq_kernel csim
+
+fpga-add-seq-xo:
+	$(MAKE) -C fpga/hls/add_seq_kernel xo
+
+fpga-kv260-ref-bd:
+	@bash -lc 'source "/home/luci/tools/Xilinx/Vivado/2023.1/settings64.sh" && vivado -mode batch -source fpga/platforms/kv260/hw/write_reference_bd_from_legacy_xpr.tcl'
+
+fpga-kv260-ref-xsa:
+	@bash -lc 'source "/home/luci/tools/Xilinx/Vivado/2023.1/settings64.sh" && vivado -mode batch -source fpga/platforms/kv260/hw/export_reference_xsa_from_legacy_xpr.tcl'
+
+fpga-kv260-prepare-common-image:
+	./fpga/platforms/kv260/vitis/prepare_common_image.sh
