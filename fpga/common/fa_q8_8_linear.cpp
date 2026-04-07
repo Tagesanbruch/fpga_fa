@@ -1,4 +1,5 @@
 #include "fa_q8_8_linear.hpp"
+#include "fa_q8_8_dot.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -37,19 +38,24 @@ void compute_tile(const int16_t x_local[kMaxInDim],
       continue;
     }
 
-    int64_t acc = 0;
     const int row = out_start + oi;
     const int row_base = row * in_dim;
-
-    for (int i = 0; i < in_dim; ++i) {
-#pragma HLS UNROLL factor=8
-      const int32_t prod = static_cast<int32_t>(x_local[i]) * static_cast<int32_t>(w[row_base + i]);
-#pragma HLS bind_op variable=prod op=mul impl=dsp
-      acc += prod;
-    }
-
+    const int64_t acc = fpga::qmath::dotprod_q8_8_single(x_local, w + row_base, in_dim);
     y[row] = q8_8_round_shift(acc);
   }
+}
+
+void update_queue_profile(const GemvTaskDesc &task, uint32_t *profile) {
+  if (!profile) return;
+  profile[kProfileTaskCount] += 1;
+  profile[kProfileTaskDescLoads] += 1;
+  profile[kProfileQueueXElems] += task.in_dim;
+  profile[kProfileQueueWElems] += static_cast<uint32_t>(task.in_dim * task.out_dim);
+  profile[kProfileQueueYElems] += task.out_dim;
+  profile[kProfileMacs] += static_cast<uint32_t>(task.in_dim * task.out_dim);
+  profile[kProfileTileOutIters] += static_cast<uint32_t>((task.out_dim + kTileOut - 1) / kTileOut);
+  profile[kProfileMaxInDim] = std::max<uint32_t>(profile[kProfileMaxInDim], task.in_dim);
+  profile[kProfileMaxOutDim] = std::max<uint32_t>(profile[kProfileMaxOutDim], task.out_dim);
 }
 
 }  // namespace
@@ -113,6 +119,53 @@ void run_gemv_tiled_hls(const int16_t *x,
   for (int out_start = 0; out_start < out_dim; out_start += kTileOut) {
     const int valid_out = std::min(kTileOut, out_dim - out_start);
     compute_tile(x_local, w, y, in_dim, out_start, valid_out);
+  }
+}
+
+void run_gemv_queue_strict(const int16_t *x_all,
+                           const int16_t *w_all,
+                           int16_t *y_all,
+                           const GemvTaskDesc *tasks,
+                           int task_count,
+                           uint32_t *profile) {
+  if (profile) {
+    clear_profile(profile);
+    profile[kProfileQueueKernelCalls] = 1;
+  }
+
+  for (int task_idx = 0; task_idx < task_count; ++task_idx) {
+    const GemvTaskDesc &task = tasks[task_idx];
+    update_queue_profile(task, profile);
+    run_gemv_strict(x_all + task.x_offset_elems, w_all + task.w_offset_elems, y_all + task.y_offset_elems,
+                    task.in_dim, task.out_dim, nullptr);
+  }
+}
+
+void run_gemv_queue_tiled_hls(const int16_t *x_all,
+                              const int16_t *w_all,
+                              int16_t *y_all,
+                              const GemvTaskDesc *tasks,
+                              int task_count,
+                              uint32_t *profile) {
+  if (profile) {
+    clear_profile(profile);
+    profile[kProfileQueueKernelCalls] = 1;
+  }
+
+  GemvTaskDesc task_local[kMaxQueueTasks];
+#pragma HLS ARRAY_PARTITION variable=task_local complete dim=1
+
+  const int bounded_tasks = std::min(task_count, kMaxQueueTasks);
+  for (int task_idx = 0; task_idx < bounded_tasks; ++task_idx) {
+#pragma HLS PIPELINE II=1
+    task_local[task_idx] = tasks[task_idx];
+  }
+
+  for (int task_idx = 0; task_idx < bounded_tasks; ++task_idx) {
+    const GemvTaskDesc &task = task_local[task_idx];
+    update_queue_profile(task, profile);
+    run_gemv_tiled_hls(x_all + task.x_offset_elems, w_all + task.w_offset_elems, y_all + task.y_offset_elems,
+                       task.in_dim, task.out_dim, nullptr);
   }
 }
 
