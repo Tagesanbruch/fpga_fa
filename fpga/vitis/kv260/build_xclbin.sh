@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-ROOT_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)
+THIS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ROOT_DIR=$(cd "$THIS_DIR/../../.." && pwd)
 
 source "$ROOT_DIR/fpga/remote/env_detect.sh"
 
@@ -12,7 +12,7 @@ CLOCK_NS=${CLOCK_NS:-5.0}
 BUILD_DIR=${BUILD_DIR:-"$ROOT_DIR/fpga/build/kv260"}
 XO=${XO:-"$BUILD_DIR/fa_attention_kernel.xo"}
 XCLBIN=${XCLBIN:-"$BUILD_DIR/fa_attention_kernel.xclbin"}
-CFG=${CFG:-"$SCRIPT_DIR/kv260.cfg"}
+CFG=${CFG:-"$THIS_DIR/kv260.cfg"}
 KERNEL_NAME=${KERNEL_NAME:-fa_attention_kernel}
 
 mkdir -p "$BUILD_DIR"

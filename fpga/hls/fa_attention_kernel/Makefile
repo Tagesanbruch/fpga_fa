@@ -11,6 +11,7 @@ SOURCE_XILINX_ENV := $(ROOT_DIR)/fpga/remote/source_xilinx_env.sh
 
 COMMON_SRCS := \
 	../../common/fa_q8_8_attention.cpp \
+	../../common/fa_q8_8_dot.cpp \
 	../../common/fa_q8_8_fixed_point.cpp \
 	../../common/fa_q8_8_recip_nr_q16_16.cpp \
 	../../common/fa_q8_8_qk_dotprod_slice.cpp \

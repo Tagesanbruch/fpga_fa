@@ -7,7 +7,13 @@ XRT_INC ?= $(XRT_ROOT)/include
 XRT_LIB ?= $(XRT_ROOT)/lib
 else ifneq ($(wildcard /usr/include/xrt/xrt_bo.h),)
 XRT_INC ?= /usr/include
+ifneq ($(wildcard /usr/lib/x86_64-linux-gnu/libxrt_coreutil.so),)
 XRT_LIB ?= /usr/lib/x86_64-linux-gnu
+else ifneq ($(wildcard /usr/lib/aarch64-linux-gnu/libxrt_coreutil.so),)
+XRT_LIB ?= /usr/lib/aarch64-linux-gnu
+else ifneq ($(wildcard /lib/libxrt_coreutil.so),)
+XRT_LIB ?= /lib
+endif
 else ifneq ($(wildcard /opt/xilinx/xrt/include/xrt/xrt_bo.h),)
 XRT_INC ?= /opt/xilinx/xrt/include
 XRT_LIB ?= /opt/xilinx/xrt/lib

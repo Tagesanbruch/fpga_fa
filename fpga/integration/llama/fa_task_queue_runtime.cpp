@@ -92,12 +92,10 @@ struct AttentionTaskQueueRuntime::Impl {
   std::unique_ptr<xrt::bo> k_bo;
   std::unique_ptr<xrt::bo> v_bo;
   std::unique_ptr<xrt::bo> o_bo;
-  std::unique_ptr<xrt::bo> profile_bo;
   std::size_t capacity_bytes = 0;
-  std::size_t profile_bytes = fpga::fa::kProfileWords * sizeof(uint32_t);
 
   void ensure_buffers(std::size_t matrix_bytes) {
-    if (capacity_bytes >= matrix_bytes && q_bo && k_bo && v_bo && o_bo && profile_bo) {
+    if (capacity_bytes >= matrix_bytes && q_bo && k_bo && v_bo && o_bo) {
       return;
     }
 
@@ -105,7 +103,6 @@ struct AttentionTaskQueueRuntime::Impl {
     k_bo = std::make_unique<xrt::bo>(*device, matrix_bytes, kernel->group_id(1));
     v_bo = std::make_unique<xrt::bo>(*device, matrix_bytes, kernel->group_id(2));
     o_bo = std::make_unique<xrt::bo>(*device, matrix_bytes, kernel->group_id(3));
-    profile_bo = std::make_unique<xrt::bo>(*device, profile_bytes, kernel->group_id(9));
     capacity_bytes = matrix_bytes;
   }
 
@@ -117,23 +114,20 @@ struct AttentionTaskQueueRuntime::Impl {
     std::memcpy(k_bo->map<void *>(), task.k, matrix_bytes);
     std::memcpy(v_bo->map<void *>(), task.v, matrix_bytes);
     std::memset(o_bo->map<void *>(), 0, matrix_bytes);
-    std::memset(profile_bo->map<void *>(), 0, profile_bytes);
 
     q_bo->sync(XCL_BO_SYNC_BO_TO_DEVICE);
     k_bo->sync(XCL_BO_SYNC_BO_TO_DEVICE);
     v_bo->sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    profile_bo->sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     auto run = (*kernel)(*q_bo, *k_bo, *v_bo, *o_bo, task.seq_len, task.stride_bytes, task.scale_q8_8,
-                         task.neg_large_q8_8, task.causal ? 1 : 0, *profile_bo);
+                         task.neg_large_q8_8, task.causal ? 1 : 0, static_cast<uint64_t>(0));
     run.wait();
 
     o_bo->sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    profile_bo->sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     std::memcpy(task.o, o_bo->map<void *>(), matrix_bytes);
     if (task.profile) {
-      std::memcpy(task.profile, profile_bo->map<void *>(), profile_bytes);
+      fpga::fa::clear_profile(task.profile);
     }
   }
 #endif

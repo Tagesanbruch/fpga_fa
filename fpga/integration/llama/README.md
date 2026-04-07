@@ -1,29 +1,32 @@
-# llama.cpp Integration Runtime
+# llama.cpp FPGA 运行时说明
 
-This directory now contains the queue-oriented runtime shared by:
+这个目录保存的是 `llama.cpp` 与当前 HLS/XRT attention kernel 之间的桥接运行时。
 
-- the standalone FPGA/XRT runner path
-- the `ggml-fpga` backend inside `inference/xcomp/llama.cpp`
-
-Current scope:
-
-- queue host-side attention tasks and drain them through either:
-  - software HLS reference (`run_attention_tiled_hls`)
-  - strict Q8.8 reference (`run_attention_strict`)
-  - XRT (`fa_attention_kernel`) when compiled with XRT enabled
-- keep the board-facing ABI aligned with the HLS kernel:
-  - `seq_len == kv_len`
-  - `D = 64`
-  - `seq_len <= 256`
-  - dense Q8.8 buffers
-
-Current limitation:
-
-- this runtime only accelerates square single-block attention today
-- decode-style `q_len != kv_len`, arbitrary masks, sinks, and softcap still fall back to CPU in llama.cpp
-
-Relevant entrypoints:
+## 组成
 
 - `fa_task_queue_runtime.hpp`
 - `fa_task_queue_runtime.cpp`
 - `inference/xcomp/llama.cpp/ggml/src/ggml-fpga/ggml-fpga.cpp`
+
+## 当前支持范围
+
+当前后端只加速满足以下条件的 `FLASH_ATTN_EXT`：
+
+- `D = 64`
+- `seq_len <= 256`
+- `q_len == kv_len`
+- 稠密 Q8.8 布局
+- `mask != nullptr` 时按 causal attention 处理
+
+为了适配 HLS kernel 的 tile 约束，backend 在 **causal 场景** 下会自动将 `seq_len` 向上补齐到 64 的倍数；补齐行不会写回到最终输出。
+
+## 当前限制
+
+- 长 prefill (`seq_len > 256`) 仍然回退到 CPU
+- decode 风格 (`q_len != kv_len`) 仍然回退到 CPU
+- sinks / softcap / 任意 mask 目前都未映射到 HLS kernel
+
+因此当前集成更接近：
+
+- 为板级 bring-up 和短序列验证准备真实 `llama-server` 路径
+- 而不是已经完成对完整 VLM 推理链的端到端硬件加速

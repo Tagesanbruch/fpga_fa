@@ -12,7 +12,8 @@ void init_row_context_rf(int16_t row_m[kTileQ],
 #pragma HLS ARRAY_PARTITION variable=row_m complete dim=1
 #pragma HLS ARRAY_PARTITION variable=row_l complete dim=1
 #pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=2 dim=1
-#pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=8 dim=2
+#pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=4 dim=2
+#pragma HLS bind_storage variable=row_acc type=ram_2p impl=uram
 
   for (int qi = 0; qi < kTileQ; qi += kRowPar) {
     const bool row0_valid = qi < valid_q;

@@ -127,6 +127,13 @@ bool check_profile_shape(const TestCase &tc, const uint32_t *profile, bool exten
   return true;
 }
 
+bool profile_is_zeroed(const uint32_t *profile) {
+  for (int i = 0; i < fpga::fa::kProfileWords; ++i) {
+    if (profile[i] != 0) return false;
+  }
+  return true;
+}
+
 CaseResult run_case(const TestCase &tc) {
   const int stride_bytes = fpga::fa::kHeadDim * static_cast<int>(sizeof(int16_t));
   const int stride_elems = stride_bytes / static_cast<int>(sizeof(int16_t));
@@ -184,8 +191,8 @@ CaseResult run_case(const TestCase &tc) {
   r.kv_tile_iters = profile[fpga::fa::kProfileKVTileIters];
   r.exact_match = (r.hls_vs_strict.maxe == 0.0);
 
-  if (!check_profile_shape(tc, profile, true)) {
-    std::cerr << "[FAIL] profile mismatch in case " << tc.name << "\n";
+  if (!profile_is_zeroed(profile)) {
+    std::cerr << "[FAIL] hardware-kernel profile should be disabled/zeroed in case " << tc.name << "\n";
     std::exit(1);
   }
   if (!check_profile_shape(tc, rtl_main_profile, true)) {

@@ -296,13 +296,18 @@ void run_attention_tiled_hls(const int16_t *q,
 #pragma HLS ARRAY_PARTITION variable=q_tile cyclic factor=2 dim=1
 #pragma HLS ARRAY_PARTITION variable=o_tile cyclic factor=2 dim=1
 #pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=2 dim=1
-#pragma HLS ARRAY_PARTITION variable=q_tile cyclic factor=8 dim=2
-#pragma HLS ARRAY_PARTITION variable=k_tile_ping cyclic factor=8 dim=2
-#pragma HLS ARRAY_PARTITION variable=k_tile_pong cyclic factor=8 dim=2
-#pragma HLS ARRAY_PARTITION variable=v_tile_ping cyclic factor=8 dim=2
-#pragma HLS ARRAY_PARTITION variable=v_tile_pong cyclic factor=8 dim=2
-#pragma HLS ARRAY_PARTITION variable=o_tile cyclic factor=8 dim=2
-#pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=8 dim=2
+#pragma HLS ARRAY_PARTITION variable=q_tile cyclic factor=4 dim=2
+#pragma HLS ARRAY_PARTITION variable=k_tile_ping cyclic factor=4 dim=2
+#pragma HLS ARRAY_PARTITION variable=k_tile_pong cyclic factor=4 dim=2
+#pragma HLS ARRAY_PARTITION variable=v_tile_ping cyclic factor=4 dim=2
+#pragma HLS ARRAY_PARTITION variable=v_tile_pong cyclic factor=4 dim=2
+#pragma HLS ARRAY_PARTITION variable=o_tile cyclic factor=4 dim=2
+#pragma HLS ARRAY_PARTITION variable=row_acc cyclic factor=4 dim=2
+
+#pragma HLS bind_storage variable=k_tile_ping type=ram_2p impl=uram
+#pragma HLS bind_storage variable=k_tile_pong type=ram_2p impl=uram
+#pragma HLS bind_storage variable=v_tile_ping type=ram_2p impl=uram
+#pragma HLS bind_storage variable=v_tile_pong type=ram_2p impl=uram
 
   for (int q_start = 0; q_start < seq_len; q_start += kTileQ) {
 #pragma HLS LOOP_TRIPCOUNT min=0 max=(kMaxSeqLen / kTileQ)

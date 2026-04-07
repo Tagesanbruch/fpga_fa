@@ -20,5 +20,12 @@ make
 ```
 
 If the machine uses distro-installed XRT packages instead, the Makefile also
-checks `/usr/include` and `/usr/lib/x86_64-linux-gnu`. It will stop with a
-clear error if the XRT development headers or `libxrt_coreutil` are missing.
+checks `/usr/include` together with:
+
+- `/usr/lib/x86_64-linux-gnu`
+- `/usr/lib/aarch64-linux-gnu`
+- `/lib`
+
+This allows native builds both on the server and directly on the KV260 board.
+The build stops with a clear error if the XRT development headers or
+`libxrt_coreutil` are missing.

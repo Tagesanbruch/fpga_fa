@@ -18,7 +18,6 @@ void fa_attention_kernel(const int16_t *q,
 #pragma HLS INTERFACE m_axi port = k offset = slave bundle = gmem1 depth = 16384
 #pragma HLS INTERFACE m_axi port = v offset = slave bundle = gmem2 depth = 16384
 #pragma HLS INTERFACE m_axi port = o offset = slave bundle = gmem3 depth = 16384
-#pragma HLS INTERFACE m_axi port = profile offset = slave bundle = gmem4 depth = 8
 
 #pragma HLS INTERFACE s_axilite port = q bundle = control
 #pragma HLS INTERFACE s_axilite port = k bundle = control
@@ -33,7 +32,7 @@ void fa_attention_kernel(const int16_t *q,
 #pragma HLS INTERFACE s_axilite port = return bundle = control
 
   fpga::fa::run_attention_tiled_hls(q, k, v, o, seq_len, stride_bytes, scale_q8_8, neg_large_q8_8, causal_en != 0,
-                                    profile);
+                                    nullptr);
 }
 
 }  // extern "C"

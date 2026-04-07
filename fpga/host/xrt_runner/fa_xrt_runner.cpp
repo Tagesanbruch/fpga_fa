@@ -140,39 +140,32 @@ int main(int argc, char **argv) {
     xrt::kernel kernel(device, uuid, opt.kernel_name);
 
     const size_t matrix_bytes = static_cast<size_t>(opt.seq_len * stride_bytes);
-    const size_t profile_bytes = static_cast<size_t>(fpga::fa::kProfileWords * sizeof(uint32_t));
-
     xrt::bo q_bo(device, matrix_bytes, kernel.group_id(0));
     xrt::bo k_bo(device, matrix_bytes, kernel.group_id(1));
     xrt::bo v_bo(device, matrix_bytes, kernel.group_id(2));
     xrt::bo o_bo(device, matrix_bytes, kernel.group_id(3));
-    xrt::bo profile_bo(device, profile_bytes, kernel.group_id(9));
 
     std::memcpy(q_bo.map<void *>(), q.data(), matrix_bytes);
     std::memcpy(k_bo.map<void *>(), k.data(), matrix_bytes);
     std::memcpy(v_bo.map<void *>(), v.data(), matrix_bytes);
     std::memset(o_bo.map<void *>(), 0, matrix_bytes);
-    std::memset(profile_bo.map<void *>(), 0, profile_bytes);
 
     q_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     k_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     v_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    profile_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-    auto run = kernel(q_bo, k_bo, v_bo, o_bo, opt.seq_len, stride_bytes, scale_q8_8, neg_large_q8_8,
-                      opt.causal ? 1 : 0, profile_bo);
+    auto run =
+        kernel(q_bo, k_bo, v_bo, o_bo, opt.seq_len, stride_bytes, scale_q8_8, neg_large_q8_8, opt.causal ? 1 : 0,
+               static_cast<uint64_t>(0));
     run.wait();
 
     o_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    profile_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     std::memcpy(o.data(), o_bo.map<void *>(), matrix_bytes);
-    std::memcpy(profile.data(), profile_bo.map<void *>(), profile_bytes);
+    fpga::fa::clear_profile(profile.data());
 
     std::cout << "[INFO] seq_len=" << opt.seq_len << " causal=" << (opt.causal ? 1 : 0)
-              << " q_tiles=" << profile[fpga::fa::kProfileQTiles]
-              << " k_tiles=" << profile[fpga::fa::kProfileKTiles]
-              << " score_evals=" << profile[fpga::fa::kProfileScoreEvals] << "\n";
+              << " profile=disabled_in_hw_kernel\n";
 
     if (opt.verify) {
       const bool ok =

@@ -18,6 +18,7 @@ open_project -reset fa_attention_kernel_hls
 set_top fa_attention_kernel
 add_files [file join $script_dir fa_attention_kernel.cpp]
 add_files [file join $common_dir fa_q8_8_attention.cpp]
+add_files [file join $common_dir fa_q8_8_dot.cpp]
 add_files [file join $common_dir fa_q8_8_fixed_point.cpp]
 add_files [file join $common_dir fa_q8_8_recip_nr_q16_16.cpp]
 add_files [file join $common_dir fa_q8_8_qk_dotprod_slice.cpp]
