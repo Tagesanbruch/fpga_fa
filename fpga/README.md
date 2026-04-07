@@ -21,6 +21,7 @@ Directory layout:
 
 - `common/`: shared fixed-point helpers and the strict Q8.8 attention reference
 - `hls/fa_attention_kernel/`: single-kernel HLS implementation and local csim
+- `platforms/kv260/`: repository-local KV260 platform workspace (`xsa`/`xpfm` preparation)
 - `vitis/kv260/`: `v++` config and xclbin build entrypoints
 - `host/xrt_runner/`: minimal XRT native host CLI
 - `remote/`: sync/build/artifact helper scripts for the remote Xilinx machine
