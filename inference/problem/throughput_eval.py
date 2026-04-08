@@ -1,9 +1,12 @@
+import argparse
+import base64
+import json
+import mimetypes
 import os
 import sys
-import base64
-import argparse
-import json
+
 from openai import OpenAI
+import requests
 
 LONG_PROMPT = """
 Please analyze this image in detail.
@@ -15,21 +18,41 @@ Please analyze this image in detail.
     and possible context of this image.
 """
 
-# llama-server API address
-SERVER_URL = "http://127.0.0.1:8080/v1"
-
 def parse_args():
     """Parse command-line arguments."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description="Run a non-streaming test against a llama-server.")
     parser.add_argument(
         "-i", "--image",
         help="Path to the input image file.",
-        default="image.png"
+        default=os.path.join(script_dir, "image.png")
     )
     parser.add_argument(
         "-o", "--output",
         help="Path to save the output metrics JSON file.",
-        default="throughput_metrics.json"
+        default=os.path.join(script_dir, "throughput_metrics.json")
+    )
+    parser.add_argument(
+        "--server-url",
+        default="http://127.0.0.1:8080",
+        help="llama-server base URL without the trailing /v1."
+    )
+    parser.add_argument(
+        "--model",
+        default="local-model",
+        help="Model name used in the request body."
+    )
+    parser.add_argument(
+        "--api-mode",
+        choices=("completion", "chat"),
+        default="completion",
+        help="Use llama.cpp /completions multimodal mode or OpenAI-compatible /v1/chat/completions."
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4096,
+        help="Maximum generated tokens."
     )
     return parser.parse_args()
 
@@ -39,6 +62,79 @@ def image_to_base64(image_path):
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode('utf-8')
 
+
+def make_data_url(image_path):
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if mime_type is None:
+        mime_type = "image/png"
+    return f"data:{mime_type};base64,{image_to_base64(image_path)}"
+
+
+def run_completion(server_url, model, image_path, prompt_text, max_tokens):
+    payload = {
+        "model": model,
+        "prompt": {
+            "prompt_string": f"{prompt_text.rstrip()}\n<__media__>\n",
+            "multimodal_data": [image_to_base64(image_path)],
+        },
+        "temperature": 0.0,
+        "n_predict": max_tokens,
+    }
+    response = requests.post(
+        f"{server_url.rstrip('/')}/completions",
+        json=payload,
+        timeout=600,
+    )
+    response.raise_for_status()
+    body = response.json()
+    content = body["content"]
+    timings = body["timings"]
+    return {
+        "content": content,
+        "prompt_tokens": body.get("tokens_evaluated", 0),
+        "completion_tokens": body.get("tokens_predicted", 0),
+        "total_tokens": body.get("tokens_evaluated", 0) + body.get("tokens_predicted", 0),
+        "prompt_ms": timings["prompt_ms"],
+        "predicted_ms": timings["predicted_ms"],
+        "prompt_per_second": timings["prompt_per_second"],
+        "predicted_per_second": timings["predicted_per_second"],
+    }
+
+
+def run_chat(server_url, model, image_path, prompt_text, max_tokens):
+    client = OpenAI(
+        base_url=f"{server_url.rstrip('/')}/v1",
+        api_key="NA"
+    )
+    data_url = make_data_url(image_path)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                    {"type": "text", "text": prompt_text},
+                ],
+            }
+        ],
+        max_tokens=max_tokens,
+        temperature=0.0,
+        stream=False,
+    )
+    timings = response.timings
+    usage = response.usage
+    return {
+        "content": response.choices[0].message.content,
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "total_tokens": usage.total_tokens,
+        "prompt_ms": timings["prompt_ms"],
+        "predicted_ms": timings["predicted_ms"],
+        "prompt_per_second": timings["prompt_per_second"],
+        "predicted_per_second": timings["predicted_per_second"],
+    }
+
 def main():
     args = parse_args()
 
@@ -47,63 +143,31 @@ def main():
         print(f"Error: Image path not found: {args.image}")
         sys.exit(1)
 
-    client = OpenAI(
-        base_url=SERVER_URL,
-        api_key="NA"
-    )
-
     try:
-        img_b64 = image_to_base64(args.image)
-        messages_payload = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{img_b64}"
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": LONG_PROMPT
-                    }
-                ]
-            }
-        ]
+        if args.api_mode == "completion":
+            result = run_completion(args.server_url, args.model, args.image, LONG_PROMPT, args.max_tokens)
+        else:
+            result = run_chat(args.server_url, args.model, args.image, LONG_PROMPT, args.max_tokens)
 
-        # Execute the blocking (non-streaming) call
-        response = client.chat.completions.create(
-            model="local-model",
-            messages=messages_payload,
-            max_tokens=4096,
-            temperature=0.0,
-            stream=False
-        )
-        
-        # Print the full response content
-        full_response = response.choices[0].message.content
+        full_response = result["content"]
         print(full_response)
         print("\n" + "--- Generation Finished ---")
         
         # Parse and print metrics from the response object
         print("\n--- Performance Metrics (from llama-server) ---")
 
-        timings = response.timings
-        usage = response.usage
-
         print(f"[Token Stats]")
-        print(f"  Prompt Tokens:     {usage.prompt_tokens} tokens")
-        print(f"  Completion Tokens: {usage.completion_tokens} tokens")
-        print(f"  Total Tokens:      {usage.total_tokens} tokens")
+        print(f"  Prompt Tokens:     {result['prompt_tokens']} tokens")
+        print(f"  Completion Tokens: {result['completion_tokens']} tokens")
+        print(f"  Total Tokens:      {result['total_tokens']} tokens")
         
         print(f"\n[Server-Side Timing (ms)]")
-        print(f"  Prefill Time: {timings['prompt_ms']:.2f} ms")
-        print(f"  Decode Time:  {timings['predicted_ms']:.2f} ms")
-        print(f"  Total Time (Server): {(timings['prompt_ms'] + timings['predicted_ms']):.2f} ms")
+        print(f"  Prefill Time: {result['prompt_ms']:.2f} ms")
+        print(f"  Decode Time:  {result['predicted_ms']:.2f} ms")
+        print(f"  Total Time (Server): {(result['prompt_ms'] + result['predicted_ms']):.2f} ms")
 
-        prefill_speed = timings['prompt_per_second']
-        decode_speed = timings['predicted_per_second']
+        prefill_speed = result['prompt_per_second']
+        decode_speed = result['predicted_per_second']
 
         print(f"\n[Speed (Tokens/sec)]")
         print(f"  Prefill Speed:  {prefill_speed:.2f} t/s")
@@ -111,8 +175,12 @@ def main():
 
         # --- Save metrics to JSON ---
         metrics_data = {
+            "api_mode": args.api_mode,
+            "model": args.model,
             "prefill_speed_tps": prefill_speed,
-            "decode_speed_tps": decode_speed
+            "decode_speed_tps": decode_speed,
+            "prompt_tokens": result["prompt_tokens"],
+            "completion_tokens": result["completion_tokens"],
         }
         
         # Use the output path from command-line arguments

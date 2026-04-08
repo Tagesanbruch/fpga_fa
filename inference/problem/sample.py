@@ -1,7 +1,8 @@
+import argparse
 import json
 import random
-import argparse
 from collections import defaultdict
+from pathlib import Path
 
 # Define the target counts for each category
 TARGET_COUNTS = {
@@ -16,20 +17,28 @@ TARGET_COUNTS = {
 
 def parse_arguments():
     """Parse command-line arguments."""
+    script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description="Sample items from a JSON file based on type.")
     parser.add_argument(
         "-i", "--input",
-        required=True,
+        default=str(script_dir / "FullTest.json"),
         help="Path to the input JSON file (e.g., FullTest.json)"
     )
     parser.add_argument(
         "-o", "--output",
-        required=True,
+        default=str(script_dir / "sample_100.json"),
         help="Path for the output sampled JSON file (e.g., sample_100.json)"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1234,
+        help="Random seed used for deterministic sampling."
     )
     return parser.parse_args()
 
 def main(args):
+    random.seed(args.seed)
     try:
         with open(args.input, 'r', encoding='utf-8') as f:
             json_data_list = json.load(f)

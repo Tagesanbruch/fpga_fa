@@ -30,3 +30,4 @@ fpga/**/build/
 .DS_Store
 .vscode/
 .github/
+useless

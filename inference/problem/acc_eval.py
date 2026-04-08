@@ -5,6 +5,8 @@ from tqdm import tqdm
 import base64
 from openai import OpenAI
 import requests
+import mimetypes
+from pathlib import Path
 
 def save_json(json_list, save_path):
     """Saves a list of dictionaries to a JSON file."""
@@ -14,11 +16,17 @@ def save_json(json_list, save_path):
 
 def _get_args():
     """Parses command-line arguments."""
+    script_dir = Path(__file__).resolve().parent
     parser = ArgumentParser()
-    parser.add_argument("--image_folder", type=str, default="./OCRBench_Images")
-    parser.add_argument("--output_folder", type=str, default="./results")
-    parser.add_argument("--OCRBench_file", type=str, default="./sample_100.json")
+    parser.add_argument("--image_folder", type=str, default=str(script_dir / "data_extracted"))
+    parser.add_argument("--output_folder", type=str, default=str(script_dir / "results"))
+    parser.add_argument("--OCRBench_file", type=str, default=str(script_dir / "sample_100.json"))
     parser.add_argument("--save_name", type=str, default="SmolVLM2")
+    parser.add_argument("--server_url", type=str, default="http://127.0.0.1:8080")
+    parser.add_argument("--model", type=str, default="local-model")
+    parser.add_argument("--api_mode", choices=("completion", "chat"), default="completion")
+    parser.add_argument("--limit", type=int, default=2)
+    parser.add_argument("--max_tokens", type=int, default=100)
     args = parser.parse_args()
     return args
 
@@ -106,6 +114,55 @@ def image_to_base64(image_path):
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode('utf-8')
 
+
+def image_to_data_url(image_path):
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if mime_type is None:
+        mime_type = "image/png"
+    return f"data:{mime_type};base64,{image_to_base64(image_path)}"
+
+
+def request_completion(server_url, model, image_path, question, max_tokens):
+    payload = {
+        "model": model,
+        "prompt": {
+            "prompt_string": f"{question.rstrip()}\n<__media__>\n",
+            "multimodal_data": [image_to_base64(image_path)],
+        },
+        "temperature": 0.0,
+        "n_predict": max_tokens,
+    }
+    response = requests.post(
+        f"{server_url.rstrip('/')}/completions",
+        json=payload,
+        timeout=600,
+    )
+    response.raise_for_status()
+    body = response.json()
+    return body["content"].strip()
+
+
+def request_chat(server_url, model, image_path, question, max_tokens):
+    client = OpenAI(
+        base_url=f"{server_url.rstrip('/')}/v1",
+        api_key="NA"
+    )
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": image_to_data_url(image_path)}},
+                    {"type": "text", "text": question},
+                ],
+            }
+        ],
+        max_tokens=max_tokens,
+        temperature=0.0,
+    )
+    return response.choices[0].message.content.strip()
+
 if __name__ == "__main__":
     args = _get_args()
 
@@ -114,12 +171,9 @@ if __name__ == "__main__":
     with open(data_path, "r") as f:
         data = json.load(f)
 
-    client = OpenAI(
-        base_url="http://127.0.0.1:8080/v1",
-        api_key="NA"
-    )
+    os.makedirs(args.output_folder, exist_ok=True)
 
-    for i in tqdm(range(2)):
+    for i in tqdm(range(min(args.limit, len(data)))):
         img_path = os.path.join(args.image_folder, data[i]["image_path"])
         qs = data[i]["question"]
 
@@ -129,35 +183,10 @@ if __name__ == "__main__":
             continue
 
         try:
-            img_b64 = image_to_base64(img_path)
-
-            messages_payload = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                # OpenAI API requires data URI format
-                                "url": f"data:image/jpeg;base64,{img_b64}"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": qs
-                        }
-                    ]
-                }
-            ]
-
-            response = client.chat.completions.create(
-                model="smolvlm2-gguf",
-                messages=messages_payload,
-                max_tokens=100,
-                temperature=0.0
-            )
-
-            response_content = response.choices[0].message.content.strip()
+            if args.api_mode == "completion":
+                response_content = request_completion(args.server_url, args.model, img_path, qs, args.max_tokens)
+            else:
+                response_content = request_chat(args.server_url, args.model, img_path, qs, args.max_tokens)
             data[i]["predict"] = response_content
 
         except Exception as e:
